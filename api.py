@@ -77,6 +77,7 @@ class Context:
         self.host = host
         self._cached_devices: Dict[str, ZigbeeObject] = {}
         self._last_known_states: dict = {}
+        self.history: List[History] = []
 
     def on_connect(self, *_):
         for device in self._cached_devices.values():
@@ -92,7 +93,11 @@ class Context:
         device = self._cached_devices.get(message.topic)
         if device is None:
             return
-        device.history.append(History(payload, datetime.datetime.now(tz=datetime.timezone.utc)))
+
+        history = History(payload, datetime.datetime.now(tz=datetime.timezone.utc))
+        device.history.append(history)
+        self.history.append(history)
+
         action = payload.get('action')
         if isinstance(device, Switch) and action is not None:
             if hasattr(device, action):
