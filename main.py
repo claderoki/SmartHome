@@ -1,7 +1,6 @@
 from api import Client, Switch, Bulb, event, Doorbell, MqttObject, Flicker
 
 import asyncio
-import random
 
 class DefaultDoorbell(Doorbell):
     def __init__(self, name, bulb: Bulb):
@@ -11,7 +10,6 @@ class DefaultDoorbell(Doorbell):
 
     @event()
     async def on_ring(self, payload):
-        print('ring')
         await self.bulb.animate_toggle(Flicker())
 
 class Button(MqttObject):
@@ -39,7 +37,6 @@ class DefaultSwitch(Switch):
 
     @event()
     async def off_press(self, payload):
-        print('pressed')
         self.bulb.set_off()
 
     @event()

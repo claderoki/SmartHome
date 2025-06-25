@@ -54,7 +54,6 @@ class MqttObject:
 
     async def animate_toggle(self, animation: 'Animation', duration: int = None):
         if self._animation is None:
-            print('starting animation')
             await self.animate(animation, duration)
         else:
             self._animation.stop()
@@ -200,10 +199,13 @@ class Client:
         self._loop = None
         self.history: List[History] = []
 
+    def log(self, message):
+        pass
+
     def on_connect(self, *_):
         for device in self._devices.values():
             self.client.subscribe(device.name)
-            print('subscribed to ' + device.name)
+            self.log('subscribed to ' + device.name)
 
     def add_device(self, device: T) -> T:
         device.context = self
@@ -211,7 +213,7 @@ class Client:
         return device
 
     def on_message(self, _, __, message):
-        print("topic: " + message.topic + ", payload: " + str(message.payload))
+        self.log("topic: " + message.topic + ", payload: " + str(message.payload))
         payload = json.loads(message.payload.decode())
 
         device = self._devices.get(message.topic)
@@ -241,6 +243,6 @@ class Client:
 
     def set_state(self, target, state):
         s = json.dumps(state)
-        print('publishing ' + s)
+        self.log('publishing ' + s)
         self.client.publish(f'{target}/set', s)
 
