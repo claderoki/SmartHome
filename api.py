@@ -1,7 +1,8 @@
+import asyncio
 import datetime
 import json
-import threading
-from typing import Dict, TypeVar, List
+import random
+from typing import Dict, TypeVar, List, Optional
 
 import paho.mqtt.client as mqtt
 
@@ -36,9 +37,34 @@ class Sequence:
 class MqttObject:
     def __init__(self, name):
         self.name = name
+        self._animation: Optional[Animation] = None
         self.history: List[History] = []
         self.events: Dict[str, Event] = {x.name:x for x in self._get_events()}
         self.context = None
+
+    def stop_animation(self):
+        if self._animation:
+            self._animation.stop()
+
+    @property
+    def last_state(self):
+        if len(self.history) == 0:
+            return {}
+        return self.history[-1].payload
+
+    async def animate_toggle(self, animation: 'Animation', duration: int = None):
+        if self._animation is None:
+            print('starting animation')
+            await self.animate(animation, duration)
+        else:
+            self._animation.stop()
+
+    async def animate(self, animation: 'Animation', duration: int):
+        self._animation = animation
+        if self._animation.object is None:
+            self._animation.object = self
+        await self._animation.start(duration)
+        self._animation = None
 
     def _get_events(self):
         for name in dir(self):
@@ -50,6 +76,7 @@ class MqttObject:
             event = getattr(func, '_event', None)
             if event:
                 yield event
+
 
 class Switch(MqttObject):
     def on_press_release(self, payload): pass
@@ -66,9 +93,53 @@ class Doorbell(MqttObject):
     def on_ring(self, payload): pass
 
 
+class Animation:
+    def __init__(self, object: MqttObject = None):
+        self._before = None
+        self.object = object
+        self._animating = False
+
+    async def iteration(self):
+        pass
+
+    def stop(self):
+        self._animating = False
+
+    async def start(self, duration: int = None):
+        self._animating = True
+        self._before = self.object.last_state
+        if duration is not None:
+            end = asyncio.get_event_loop().time() + duration
+        else:
+            end = 999999999999.0
+        while asyncio.get_event_loop().time() < end and self._animating:
+            await self.iteration()
+        self._animating = False
+
+
+class Flicker(Animation):
+    def __init__(self, bulb: 'Bulb' = None):
+        super().__init__(bulb)
+
+    async def iteration(self):
+        base = 160
+        if random.random() < 0.05:
+            brightness = random.randint(100, 160)
+            transition = random.uniform(0.1, 0.2)
+        else:
+            flicker = random.randint(-10, 10)
+            brightness = max(100, min(254, base + flicker))
+            transition = random.uniform(0.3, 0.5)
+
+        self.object.set_brightness(brightness, transition)
+        await asyncio.sleep(transition)
+
 class Bulb(MqttObject):
     BRIGHTNESS_MAX = 255
     BRIGHTNESS_MIN = 0
+
+    def __init__(self, name):
+        super().__init__(name)
 
     @property
     def last_known_state(self):
@@ -84,15 +155,19 @@ class Bulb(MqttObject):
         brightness = self._get_current_brightness()
         self.set_brightness(brightness + by)
 
-    def set_brightness(self, brightness: int):
+    def set_brightness(self, brightness: int, transition: float = None):
         brightness = max(self.BRIGHTNESS_MIN, min(self.BRIGHTNESS_MAX, brightness))
-        self.context.set_state(self.name, {'brightness': brightness})
+        self.context.set_state(self.name, {'brightness': brightness, 'transition': transition})
 
     def _set_state(self, value: bool):
+        self.stop_animation()
         self.context.set_state(self.name, {"state": 'ON' if value else 'OFF'})
 
     def set_on(self):
         self._set_state(True)
+
+    def set_off(self):
+        self._set_state(False)
 
     def is_on(self):
         last_state = self.last_known_state.get('state')
@@ -109,9 +184,6 @@ class Bulb(MqttObject):
     def is_off(self):
         return not self.is_on()
 
-    def set_off(self):
-        self._set_state(False)
-
     def toggle(self):
         if self.is_on():
             self.set_off()
@@ -125,11 +197,13 @@ class Client:
         self.host = host
         self._devices: Dict[str, MqttObject] = {}
         self._last_known_states: dict = {}
+        self._loop = None
         self.history: List[History] = []
 
     def on_connect(self, *_):
         for device in self._devices.values():
             self.client.subscribe(device.name)
+            print('subscribed to ' + device.name)
 
     def add_device(self, device: T) -> T:
         device.context = self
@@ -153,16 +227,20 @@ class Client:
         if event is None:
             return
 
-        event.function(device, payload)
+        asyncio.run_coroutine_threadsafe(event.function(device, payload), self._loop)
 
 
-    def start(self):
+    async def start(self):
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
         self.client.connect(self.host, 1883, 60)
-        self.client.loop_forever()
+        self.client.loop_start()
+        self._loop = asyncio.get_event_loop()
+        await asyncio.Event().wait()
 
 
     def set_state(self, target, state):
-        self.client.publish(f'{target}/set', json.dumps(state))
+        s = json.dumps(state)
+        print('publishing ' + s)
+        self.client.publish(f'{target}/set', s)
 
