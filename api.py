@@ -8,17 +8,24 @@ import paho.mqtt.client as mqtt
 
 T = TypeVar('T')
 
-def event(name: str = None):
+def action(name: str = None):
     def wrapper(func):
-        func._event = Event(func, name or func.__name__)
+        name2 = name or func.__name__
+        func._event = Event(func, lambda x: x['action'] == name2)
+        return func
+    return wrapper
+
+def event(payload_check):
+    def wrapper(func):
+        func._event = Event(func, payload_check)
         return func
     return wrapper
 
 
 class Event:
-    def __init__(self, function, name):
+    def __init__(self, function, payload_check):
         self.function = function
-        self.name = name
+        self.payload_check = payload_check
 
 
 class History:
@@ -39,7 +46,7 @@ class MqttObject:
         self.name = name
         self._animation: Optional[Animation] = None
         self.history: List[History] = []
-        self.events: Dict[str, Event] = {x.name:x for x in self._get_events()}
+        self.events: List[Event] = list(self._get_events())
         self.context = None
 
     def stop_animation(self):
@@ -104,6 +111,9 @@ class Animation:
     def stop(self):
         self._animating = False
 
+    async def complete(self):
+        pass
+
     async def start(self, duration: int = None):
         self._animating = True
         self._before = self.object.last_state
@@ -113,7 +123,9 @@ class Animation:
             end = 999999999999.0
         while asyncio.get_event_loop().time() < end and self._animating:
             await self.iteration()
+        # print('done animating', asyncio.get_event_loop().time(), self._animating)
         self._animating = False
+        await self.complete()
 
 
 class Flicker(Animation):
@@ -123,15 +135,49 @@ class Flicker(Animation):
     async def iteration(self):
         base = 160
         if random.random() < 0.05:
-            brightness = random.randint(100, 160)
-            transition = random.uniform(0.1, 0.2)
+            brightness = random.randint(base - 60, base)
+            transition = random.uniform(0.15, 0.25)
         else:
-            flicker = random.randint(-10, 10)
-            brightness = max(100, min(254, base + flicker))
+            step = 20
+            flicker = random.randint(-step, step)
+            brightness = base + flicker
             transition = random.uniform(0.3, 0.5)
 
         self.object.set_brightness(brightness, transition)
         await asyncio.sleep(transition)
+
+    async def complete(self):
+        if not self._before:
+            return
+        brightness = self._before['brightness']
+        state = self._before['state']
+        self.object.set(BulbPayload(brightness=brightness, on=state == 'ON'))
+
+
+class BulbPayload:
+    __slots__ = ('brightness', 'transition', 'on')
+
+    BRIGHTNESS_MAX = 255
+    BRIGHTNESS_MIN = 0
+
+    def __init__(self, brightness: int = None, transition: float = None, on: bool = None):
+        if brightness:
+            brightness = max(self.BRIGHTNESS_MIN, min(self.BRIGHTNESS_MAX, brightness))
+        self.brightness = brightness
+        self.transition = transition
+        self.on = on
+
+    def payload(self) -> dict:
+        data = {}
+        if self.brightness is not None:
+            brightness = max(self.BRIGHTNESS_MIN, min(self.BRIGHTNESS_MAX, self.brightness))
+            data['brightness'] = brightness
+        if self.transition:
+            data['transition'] = self.transition
+        if self.on is not None:
+            data['state'] = 'ON' if self.on else 'OFF'
+        return data
+
 
 class Bulb(MqttObject):
     BRIGHTNESS_MAX = 255
@@ -154,13 +200,17 @@ class Bulb(MqttObject):
         brightness = self._get_current_brightness()
         self.set_brightness(brightness + by)
 
+    def set(self, payload: BulbPayload):
+        data = payload.payload()
+        if data:
+            self.context.set_state(self.name, data)
+
     def set_brightness(self, brightness: int, transition: float = None):
-        brightness = max(self.BRIGHTNESS_MIN, min(self.BRIGHTNESS_MAX, brightness))
-        self.context.set_state(self.name, {'brightness': brightness, 'transition': transition})
+        self.set(BulbPayload(brightness, transition))
 
     def _set_state(self, value: bool):
         self.stop_animation()
-        self.context.set_state(self.name, {"state": 'ON' if value else 'OFF'})
+        self.set(BulbPayload(on=value))
 
     def set_on(self):
         self._set_state(True)
@@ -200,7 +250,8 @@ class Client:
         self.history: List[History] = []
 
     def log(self, message):
-        pass
+        if False:
+            print(message)
 
     def on_connect(self, *_):
         for device in self._devices.values():
@@ -224,12 +275,13 @@ class Client:
         device.history.append(history)
         self.history.append(history)
 
-        action = payload.get('action')
-        event = device.events.get(action)
-        if event is None:
-            return
+        for event in device.events:
+            try:
+                if event.payload_check(payload):
+                    asyncio.run_coroutine_threadsafe(event.function(device, payload), self._loop)
+            except:
+                pass
 
-        asyncio.run_coroutine_threadsafe(event.function(device, payload), self._loop)
 
 
     async def start(self):

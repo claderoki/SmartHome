@@ -1,4 +1,4 @@
-from api import Client, Switch, Bulb, event, Doorbell, MqttObject, Flicker
+from api import Client, Switch, Bulb, action, Doorbell, MqttObject, Flicker, event
 
 import asyncio
 
@@ -8,19 +8,31 @@ class DefaultDoorbell(Doorbell):
         self.bulb = bulb
         self._flickering = False
 
-    @event()
+    @action()
     async def on_ring(self, payload):
         await self.bulb.animate_toggle(Flicker())
 
 class Button(MqttObject):
-    @event('single')
+    @action('single')
     async def on_single(self, payload):
         pass
 
-    @event('double')
+    @action('double')
     async def on_double(self, payload):
         pass
 
+class StaticDetector(MqttObject):
+    def __init__(self, name, bulb: Bulb):
+        super().__init__(name)
+        self.bulb = bulb
+
+    @event(lambda x: x['occupancy'])
+    async def occupied(self, _):
+        self.bulb.set_on()
+
+    @event(lambda x: not x['occupancy'])
+    async def unoccupied(self, _):
+        self.bulb.set_off()
 
 class DefaultSwitch(Switch):
     def __init__(self, name, bulb: Bulb):
@@ -28,22 +40,22 @@ class DefaultSwitch(Switch):
         self.bulb = bulb
         self._steps = 20
 
-    @event()
+    @action()
     async def on_press(self, payload):
         if self.bulb.is_on():
             self.bulb.set_brightness(self.bulb.BRIGHTNESS_MAX)
         else:
             self.bulb.set_on()
 
-    @event()
+    @action()
     async def off_press(self, payload):
         self.bulb.set_off()
 
-    @event()
+    @action()
     async def down_press(self, payload):
         self.bulb.decrease_brightness(self._steps)
 
-    @event()
+    @action()
     async def up_press(self, payload):
         self.bulb.increase_brightness(self._steps)
 
@@ -62,5 +74,8 @@ doorbell2 = client.add_device(DefaultDoorbell('doorbell/2', bulb1))
 
 button1 = client.add_device(Button('zigbee2mqtt/Button 1'))
 button2 = client.add_device(Button('zigbee2mqtt/Button 2'))
+button3 = client.add_device(Button('zigbee2mqtt/Button 3'))
+
+a = client.add_device(StaticDetector('zigbee2mqtt/Static 1', bulb3))
 
 asyncio.run(client.start())
