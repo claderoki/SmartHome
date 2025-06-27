@@ -42,6 +42,7 @@ class DefaultSwitch(Switch):
 
     @action()
     async def on_press(self, payload):
+        await self.bulb.stop_animation()
         if self.bulb.is_on():
             self.bulb.set_brightness(self.bulb.BRIGHTNESS_MAX)
         else:
@@ -49,14 +50,17 @@ class DefaultSwitch(Switch):
 
     @action()
     async def off_press(self, payload):
+        await self.bulb.stop_animation()
         self.bulb.set_off()
 
     @action()
     async def down_press(self, payload):
+        await self.bulb.stop_animation()
         self.bulb.decrease_brightness(self._steps)
 
     @action()
     async def up_press(self, payload):
+        await self.bulb.stop_animation()
         self.bulb.increase_brightness(self._steps)
 
 client = Client("192.168.2.11")

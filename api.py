@@ -49,9 +49,15 @@ class MqttObject:
         self.events: List[Event] = list(self._get_events())
         self.context = None
 
-    def stop_animation(self):
+    async def stop_animation(self, wait: bool = True):
         if self._animation:
             self._animation.stop()
+        if wait:
+            await self._wait_until_stopped()
+
+    async def _wait_until_stopped(self):
+        while self._animation:
+            await asyncio.sleep(1)
 
     @property
     def last_state(self):
@@ -209,7 +215,6 @@ class Bulb(MqttObject):
         self.set(BulbPayload(brightness, transition))
 
     def _set_state(self, value: bool):
-        self.stop_animation()
         self.set(BulbPayload(on=value))
 
     def set_on(self):
@@ -282,8 +287,6 @@ class Client:
             except:
                 pass
 
-
-
     async def start(self):
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
@@ -291,7 +294,6 @@ class Client:
         self.client.loop_start()
         self._loop = asyncio.get_event_loop()
         await asyncio.Event().wait()
-
 
     def set_state(self, target, state):
         s = json.dumps(state)
