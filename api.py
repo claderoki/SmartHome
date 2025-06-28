@@ -47,7 +47,11 @@ class MqttObject:
         self._animation: Optional[Animation] = None
         self.history: List[History] = []
         self.events: List[Event] = list(self._get_events())
-        self.context = None
+        self.context: Client = None
+
+    def set(self, state):
+        print('setting', state)
+        self.context.set_state(self.name, state)
 
     async def stop_animation(self, wait: bool = True):
         if self._animation:
@@ -185,6 +189,23 @@ class BulbPayload:
         return data
 
 
+class ColourBulbPayload(BulbPayload):
+    __slots__ = ('brightness', 'transition', 'on', 'colour')
+
+    BRIGHTNESS_MAX = 255
+    BRIGHTNESS_MIN = 0
+
+    def __init__(self, brightness: int = None, transition: float = None, on: bool = None, colour: str = None):
+        super().__init__()
+        self.colour = colour
+
+    def payload(self) -> dict:
+        data = super().payload()
+        if self.colour is not None:
+            data['colour'] = self.colour
+        return data
+
+
 class Bulb(MqttObject):
     BRIGHTNESS_MAX = 255
     BRIGHTNESS_MIN = 0
@@ -245,6 +266,10 @@ class Bulb(MqttObject):
             self.set_on()
 
 
+class IkeaBulb(Bulb):
+    pass
+
+
 class Client:
     def __init__(self, host):
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
@@ -255,7 +280,7 @@ class Client:
         self.history: List[History] = []
 
     def log(self, message):
-        if False:
+        if True:
             print(message)
 
     def on_connect(self, *_):
