@@ -122,6 +122,71 @@ class DefaultSwitch(Switch):
         await self.bulb.stop_animation()
         self.bulb.increase_brightness(self._steps)
 
+
+# class StaticDetector2(MqttObject):
+#     def __init__(self, name):
+#         super().__init__(name)
+#         self.group = None
+#
+#     @event(lambda x: x['occupancy'])
+#     async def occupied(self, payload):
+#         await self.group.occupied(self, payload)
+#
+#     @event(lambda x: not x['occupancy'])
+#     async def unoccupied(self, payload):
+#         await self.group.unoccupied(self, payload)
+
+#
+# class Group:
+#     def __init__(self,
+#                  downstairs_hall: StaticDetector2,
+#                  upstairs_hall: StaticDetector2,
+#                  stairs: StaticDetector2,
+#                  upstairs_hall_bulb: Bulb,
+#                  downstairs_hall_bulb: Bulb,
+#                  ):
+#         self.downstairs_hall = self.setup_detector(downstairs_hall)
+#         self.upstairs_hall = self.setup_detector(upstairs_hall)
+#         self.stairs = self.setup_detector(stairs)
+#         self.upstairs_hall_bulb = upstairs_hall_bulb
+#         self.downstairs_hall_bulb = downstairs_hall_bulb
+#         self.previous = {
+#             self.downstairs_hall: False,
+#             self.upstairs_hall: False,
+#             self.stairs: False,
+#         }
+#         self.history = []
+#
+#     def setup_detector(self, detector):
+#         detector.group = self
+#         return detector
+#
+#     def is_going_up(self):
+#         pass
+#
+#     async def occupied(self, static: StaticDetector2, payload):
+#
+#
+#         previous = self.history[-1] if self.history else None
+#
+#         if static == self.downstairs_hall:
+#             if previous == self.stairs:
+#                 pass
+#             elif previous == static:
+#                 self.downstairs_hall_bulb.set_on()
+#             print(f'(downstairs hall) occupied')
+#         if static == self.upstairs_hall:
+#             print(f'(upstairs_hall) occupied')
+#         if static == self.stairs:
+#             print(f'(stairs) occupied')
+#         self.history.append(static)
+#
+#     async def unoccupied(self, static, payload):
+#         print(static.name, 'unoccupied')
+
+
+
+
 client = Client("192.168.2.11")
 
 bulb1 = client.add_device(Bulb('zigbee2mqtt/Bulb 1'))
@@ -135,8 +200,8 @@ switch1 = client.add_device(DefaultSwitch('zigbee2mqtt/Switch 1', bulb4))
 switch2 = client.add_device(DefaultSwitch('zigbee2mqtt/Switch 2', bulb5))
 switch3 = client.add_device(DefaultSwitch('zigbee2mqtt/Switch 3', bulb3))
 
-doorbell1 = client.add_device(DefaultDoorbell('doorbell/1'))
-doorbell2 = client.add_device(DefaultDoorbell('doorbell/2', bulb4))
+# doorbell1 = client.add_device(DefaultDoorbell('doorbell/1'))
+# doorbell2 = client.add_device(DefaultDoorbell('doorbell/2', bulb4))
 
 socket1 = client.add_device(Socket('zigbee2mqtt/Socket 1'))
 
@@ -146,6 +211,13 @@ button3 = client.add_device(SocketButton('zigbee2mqtt/Button 3', socket1))
 
 a = client.add_device(StaticDetector('zigbee2mqtt/Static 1', bulb3))
 b = client.add_device(MqttObject('zigbee2mqtt/Door 1'))
+
+# static2 = client.add_device(StaticDetector2('zigbee2mqtt/Static 2'))
+# static3 = client.add_device(StaticDetector2('zigbee2mqtt/Static 3'))
+# static4 = client.add_device(StaticDetector2('zigbee2mqtt/Static 4'))
+
+# group = Group(static3, static4, static2, bulb1, bulb2)
+
 
 # import threading
 # from flask import Flask, render_template
