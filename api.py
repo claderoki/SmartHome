@@ -295,7 +295,11 @@ class Client:
 
     def on_message(self, _, __, message):
         self.log("topic: " + message.topic + ", payload: " + str(message.payload))
-        payload = json.loads(message.payload.decode())
+        payload = message.payload.decode()
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            pass
 
         device = self._devices.get(message.topic)
         if device is None:
