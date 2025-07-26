@@ -4,13 +4,21 @@ import os
 import platform
 import asyncio
 
+
 class Desktop(MqttObject):
-    @event(lambda x: x == 'shutdown')
+    def set_status(self, status):
+        self.context.client.publish(f'{self.name}/status', status)
+
+    @event(lambda x: x == 'OFF')
     async def on_shutdown(self, _):
+        self.set_status('OFF')
         if platform.system() == "Linux":
             os.system("shutdown now")
         elif platform.system() == "Windows":
             os.system("shutdown /s /t 0")
+
+    async def on_subscribe(self):
+        self.set_status('ON')
 
 
 client = Client("192.168.2.11")

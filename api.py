@@ -53,6 +53,9 @@ class MqttObject:
         print('setting', state)
         self.context.set_state(self.name, state)
 
+    async def on_subscribe(self):
+        pass
+
     async def stop_animation(self, wait: bool = True):
         if self._animation:
             self._animation.stop()
@@ -287,6 +290,7 @@ class Client:
         for device in self._devices.values():
             self.client.subscribe(device.name)
             self.log('subscribed to ' + device.name)
+            asyncio.run_coroutine_threadsafe(device.on_subscribe(), self._loop)
 
     def add_device(self, device: T) -> T:
         device.context = self
