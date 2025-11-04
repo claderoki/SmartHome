@@ -136,7 +136,9 @@ class Animation:
             end = 999999999999.0
         while asyncio.get_event_loop().time() < end and self._animating:
             await self.iteration()
-        # print('done animating', asyncio.get_event_loop().time(), self._animating)
+            if self.object.last_state.get('state').lower() != 'on':
+                self.stop()
+
         self._animating = False
         await self.complete()
 
@@ -144,19 +146,34 @@ class Animation:
 class Flicker(Animation):
     def __init__(self, bulb: 'Bulb' = None):
         super().__init__(bulb)
+        self.base = None
+        self.previous = None
+
+    def get_base(self, uncached = False):
+        if not self.base or uncached:
+            self.base = self.object._get_current_brightness()
+        return self.base
 
     async def iteration(self):
-        base = 160
-        if random.random() < 0.05:
-            brightness = random.randint(base - 60, base)
-            transition = random.uniform(0.15, 0.25)
+        if self.object.last_state.get('brightness') != self.previous:
+            base = self.get_base(True)
         else:
-            step = 20
-            flicker = random.randint(-step, step)
-            brightness = base + flicker
-            transition = random.uniform(0.3, 0.5)
+            base = self.get_base()
+
+        transition = random.uniform(0.6, 1.4)
+        if random.random() < 0.1:
+            transition *= 2
+            threshold = 20
+        else:
+            threshold = 8
+
+        step = min(threshold, base)
+        flicker = random.uniform(-step, step)
+        brightness = max(1, base + flicker)
 
         self.object.set_brightness(brightness, transition)
+        self.previous = brightness
+
         await asyncio.sleep(transition)
 
     async def complete(self):
@@ -257,7 +274,7 @@ class Bulb(MqttObject):
         pass
 
     def _get_current_brightness(self):
-        return self.last_known_state.get('brightness', 125)
+        return self.last_known_state.get('brightness', 75)
 
     def is_off(self):
         return not self.is_on()
